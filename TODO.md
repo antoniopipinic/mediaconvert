@@ -1,0 +1,1 @@
+[ ] implement logic in S3 configuration Lambda to update the lifecycle policy if a user is deleted (currently the lifecycle policy remains the same, since it's only extended in the first place)

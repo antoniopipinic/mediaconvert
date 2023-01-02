@@ -1,0 +1,28 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "mediaconvert-kunde-antonio"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1p7qqgv0j1hcy"
+s3_prefix = "mediaconvert-kunde-antonio"
+region = "eu-central-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM"
+parameter_overrides = "EnvironmentName=\"alexander\" ORSFTPDataStoreBucketName=\"ors-ftp-data-store-1\" SecretsManagerID=\"s-df4fa43ba31b44019\" PlayoutName=\"alexander\" CustomerName=\"customertest\""
+image_repositories = []
+profile = "ORS-FTP-1"
+disable_rollback = true
+
+[jakob]
+[jakob.deploy]
+[jakob.deploy.parameters]
+stack_name = "mediaconvert-kunde-jakob"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1p7qqgv0j1hcy"
+s3_prefix = "mediaconvert-kunde-jakob"
+region = "eu-central-1"
+profile = "ORS-FTP-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM"
+disable_rollback = true
+parameter_overrides = "EnvironmentName=\"jakob\" ORSFTPDataStoreBucketName=\"ors-ftp-data-store-1\" SecretsManagerID=\"s-df4fa43ba31b44019\" PlayoutName=\"jakob\" CustomerName=\"customertest\""
+image_repositories = []

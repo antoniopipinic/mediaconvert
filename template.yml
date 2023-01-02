@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: |
+  This template deploys the Mediaconvert stack
+
+Globals:
+  Function:
+    Runtime: python3.9
+    MemorySize: 128
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment prefix for installation
+    AllowedPattern: "[a-z][0-9a-z-]{3,30}"
+
+  ORSFTPDataStoreBucketName:
+    Type: String
+    Description: Name of FTP Data Store S3 bucket
+    Default: ors-ftp-data-store-1
+
+  SecretsManagerID:
+    Type: String
+    Description: Secrets Manager prefix, in order for it to work with AWS Transfer family
+    Default: s-df4fa43ba31b44019
+
+  PlayoutName:
+    Type: String
+    Description: Name of the playout
+    Default: kundetest
+
+  CustomerName:
+    Type: String
+    Description: Name of the customer
+    Default: customertest
+
+Resources:
+#
+# Substacks
+#
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: substacks/lambda.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ORSFTPDataStoreBucketName: !Ref ORSFTPDataStoreBucketName
+        PlayoutName: !Ref PlayoutName
+
+#
+# User Stacks
+#
+  User1:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: substacks/User.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ORSFTPDataStoreBucketName: !Ref ORSFTPDataStoreBucketName
+        PlayoutName: !Ref PlayoutName
+        CustomerName: !Ref CustomerName
+        SecretsManagerID: !Ref SecretsManagerID
+        S3ConfigurationLambdaFunctionArn: !GetAtt LambdaStack.Outputs.S3ConfigurationLambdaFunctionArn
