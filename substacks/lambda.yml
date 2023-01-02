@@ -1,0 +1,231 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment prefix for installation
+    AllowedPattern: "[a-z][0-9a-z-]{3,30}"
+
+  ORSFTPDataStoreBucketName:
+    Type: String
+    Description: Name of FTP Data Store S3 bucket
+
+  PlayoutName:
+    Type: String
+    Description: Name of the playout.
+
+Resources:
+
+### Update Lifecycle Policy Lambda Function
+  S3ConfigurationLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${EnvironmentName}-S3Configuration-lambda-function"
+      Description: !Sub "${EnvironmentName}-S3Configuration-lambda-function"
+      Handler: index.lambda_handler
+      Runtime: python3.9
+      CodeUri: ../lambdas/01_s3configuration/
+      Architectures:
+      - arm64
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt S3ConfigurationLambdaFunctionRole.Arn
+      Environment:
+        Variables:
+          PROJECT: !Ref EnvironmentName
+          REGION: !Ref AWS::Region
+
+  S3ConfigurationLambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3ConfigurationLambdaFunctionPermissions
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+                - s3:PutLifecycleConfiguration
+                - s3:GetLifecycleConfiguration
+              Resource:
+                - !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}*
+              # Condition:
+              #   ArnEquals:
+              #     aws:SourceArn:
+              #       !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*
+
+### MediaConvert Lambda Function
+  MediaConvertLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${EnvironmentName}-MediaConvertJob-lambda-function"
+      Description: !Sub "${EnvironmentName}-MediaConvertJob-lambda-function"
+      Handler: createMediaconvertJob.mediaconvert
+      Runtime: python3.9
+      CodeUri: ../lambdas/02_createMediaConvert/
+      Architectures:
+      - arm64
+      Timeout: 30
+      MemorySize: 256
+      Role: !GetAtt MediaConvertLambdaFunctionRole.Arn
+      Environment:
+        Variables:
+          PROJECT: !Ref EnvironmentName
+          REGION: !Ref AWS::Region
+          ACCOUNT_NUMBER: !Ref AWS::AccountId
+          MEDIACONVERTROLE: !GetAtt MediaConvertLambdaFunctionRole.Arn
+
+  MediaConvertLambdaFunctionS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MediaConvertLambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}
+
+  MediaConvertLambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-MediaConvert-LambdaExecutionRole
+      AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+                  - mediaconvert.amazonaws.com
+              Action:
+                - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: LambdaAccessToS3
+          PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: "Allow"
+                  Action:
+                   - s3:DeleteObject
+                   - s3:PutObject
+                   - s3:GetObject
+                   - s3:ListBucket
+                   - s3:AbortMultipartUpload
+                   - s3:GetBucketLocation
+                  Resource:
+                    - !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}
+                    - !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}/${PlayoutName}/*
+                - Effect: "Allow"
+                  Action:
+                    - s3:ListBuckets
+                  Resource:
+                    - "*"
+        - PolicyName: LambdaAccessToMediaConvert
+          PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - mediaconvert:*
+                    - iam:PassRole
+                  Resource:
+                    - "*"
+        - PolicyName: LambdaAccessToSNS
+          PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - sns:Publish
+                  Resource:
+                    - arn:aws:sns:eu-central-1:350474878483:zisnotificationservice
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  MCPostProcessingLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${EnvironmentName}-MCPostProcessing-lambda-function"
+      Description: !Sub "${EnvironmentName}-MCPostProcessing-lambda-function"
+      Handler: postProcessingMediaConvert.lambda_handler
+      Runtime: python3.9
+      CodeUri: ../lambdas/03_postProcessingMediaConvert/
+      Architectures:
+        - x86_64
+      Timeout: 30
+      MemorySize: 256
+      EphemeralStorage:
+        Size: 10240
+      Role: !GetAtt MCPostProcessingLambdaFunctionRole.Arn
+      Environment:
+        Variables:
+          PROJECT: !Ref EnvironmentName
+          REGION: !Ref AWS::Region
+          ACCOUNT_NUMBER: !Ref AWS::AccountId
+
+  MCPostProcessingLambdaFunctionS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MCPostProcessingLambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}
+
+  MCPostProcessingLambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-MCPostProcessing-LambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: PostProcessingLambdaAccessToS3
+          PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: "Allow"
+                  Action:
+                  - s3:DeleteObject
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  Resource:
+                    - !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}
+                    - !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}/${PlayoutName}/*
+                - Effect: "Allow"
+                  Action:
+                    - s3:ListBuckets
+                  Resource:
+                    - "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+Outputs:
+  S3ConfigurationLambdaFunctionArn:
+    Value: !GetAtt S3ConfigurationLambdaFunction.Arn
+
+  MediaConvertLambdaFunctionArn:
+    Value: !GetAtt MediaConvertLambdaFunction.Arn

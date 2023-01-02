@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  This templates creates two secrets (Read and Write) for the given UserName. It generates a password (20), retrieves the Roles for Read and Write the S3 bucket and a HomeDirectory. All this will saved in the secret as Key-Value pairs. The Name of the stack should refference on the S3 client folder like BSSDSGVO-UserA. 
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment prefix for installation
+    AllowedPattern: "[a-z][0-9a-z-]{3,30}"
+  ORSFTPDataStoreBucketName:
+    Description: Name of Data store S3 bucket. Name will be extended with the Username (e.g. Client folder) like /ors-ftp-data-store-1/<UserName>
+    Default: ors-ftp-data-store-1
+    Type: String
+  PlayoutName:
+    Type: String
+    Description: Name of the playout.
+  CustomerName:
+    Type: String
+    Description: Name of the customer.
+    Default: kunde-test
+  FTPStoreReadRoleArn:
+    Description: ARN of the Read role, created by the CreateAccessRoles stack
+    Type: String
+  FTPStoreReadWriteRoleArn:
+    Description: ARN of the ReadWrite role, created by the CreateAccessRoles stack
+    Type: String
+  SecretsManagerID:
+    Type: String
+    Description: Secrets Manager prefix, in order for it to work with AWS Transfer family
+    
+Resources: 
+  SecretForReadUser:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Join ["", [!Ref SecretsManagerID,"/", !Ref PlayoutName, "_", !Ref CustomerName,"_DL"]]
+      Description: "This secret has a dynamically generated secret password."
+      GenerateSecretString: 
+        SecretStringTemplate: 
+          !Join
+            - ""
+            - - '{"Role":"'
+              - !Ref FTPStoreReadRoleArn
+              - '","HomeDirectory":"'
+              - !Sub /${ORSFTPDataStoreBucketName}/${PlayoutName}/${CustomerName}/Download
+              - '"}'
+        GenerateStringKey: "Password"
+        PasswordLength: 20
+        ExcludeCharacters: '"@/\'
+
+  SecretForReadWriteUser:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Join ["", [!Ref SecretsManagerID,"/", !Ref PlayoutName, "_", !Ref CustomerName,"_UL"]]
+      Description: "This secret has a dynamically generated secret password."
+      GenerateSecretString: 
+        SecretStringTemplate: 
+          !Join
+            - ""
+            - - '{"Role":"'
+              - !Ref FTPStoreReadWriteRoleArn
+              - '","HomeDirectory":"'
+              - !Sub /${ORSFTPDataStoreBucketName}/${PlayoutName}/${CustomerName}/Upload
+              - '"}'
+        GenerateStringKey: "Password"
+        PasswordLength: 20
+        ExcludeCharacters: '"@/\'
+        
+Outputs:
+  ReadSecretUserArn:
+    Description: Arn of the Read secret
+    Value: !Ref SecretForReadUser
+        
+  ReadWriteSecretArn:
+    Description: Arn of the Write secret
+    Value: !Ref SecretForReadWriteUser

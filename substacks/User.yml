@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: |
+  This template deploys the Mediaconvert stack
+
+Globals:
+  Function:
+    Runtime: python3.9
+    MemorySize: 128
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment prefix for installation
+    AllowedPattern: "[a-z][0-9a-z-]{3,30}"
+
+  ORSFTPDataStoreBucketName:
+    Type: String
+    Description: Name of Data store S3 bucket. 
+
+  PlayoutName:
+    Type: String
+    Description: Name of the playout.
+
+  CustomerName:
+    Type: String
+    Description: Name of the customer.
+
+  SecretsManagerID:
+    Type: String
+    Description: Secrets Manager prefix, in order for it to work with AWS Transfer family
+
+  S3ConfigurationLambdaFunctionArn:
+    Type: String
+    Description: ARN of the Lambda function that updates the S3 Lifecycle policy for the newly created user
+
+Resources:
+#
+# Substacks
+#
+  CreateAccessRolesStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: CreateAccessRoles.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ORSFTPDataStoreBucketName: !Ref ORSFTPDataStoreBucketName
+        PlayoutName: !Ref PlayoutName
+        CustomerName: !Ref CustomerName
+
+  CreateUserStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: CreateAccessRolesStack
+    Properties:
+      TemplateURL: CreateUser.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ORSFTPDataStoreBucketName: !Ref ORSFTPDataStoreBucketName
+        PlayoutName: !Ref PlayoutName
+        CustomerName: !Ref CustomerName
+        FTPStoreReadRoleArn: CreateAccessRolesStack.Outputs.FTPStoreReadRoleArn
+        FTPStoreReadWriteRoleArn: CreateAccessRolesStack.Outputs.FTPStoreReadWriteRoleArn
+        SecretsManagerID: !Ref SecretsManagerID
+
+  UpdateLifeCyclePolicy:
+    Type: Custom::S3Configuration
+    DependsOn: CreateUserStack
+    Version: 1.0
+    Properties:
+      ServiceToken: !Ref S3ConfigurationLambdaFunctionArn
+      playout: !Ref PlayoutName
+      kunde: !Ref CustomerName
+      s3bucket: !Ref ORSFTPDataStoreBucketName
+
+
+
+
+
+
+

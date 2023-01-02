@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |
+  Template deployes two roles (Read und ReadWrite) for accing the SFTP Storage in a given client folder. ClientFolder must match the name of the S3 folder. The Template exports three values that the CreateUser template refference on later. The StackName should match the S3 folder name.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment prefix for installation
+    AllowedPattern: "[a-z][0-9a-z-]{3,30}"
+  
+  ORSFTPDataStoreBucketName:
+    Description: Name of Data store S3 bucket. Name will be extended with the Username (e.g. Client folder) like /ors-ftp-data-store-1/<UserName>
+    Default: ors-ftp-data-store-1
+    Type: String
+
+  PlayoutName:
+    Type: String
+    Description: Name of the playout.
+
+  CustomerName:
+    Type: String
+    Description: Name of the customer.
+    
+Resources: 
+  ORSFTPStoreAccessRoleReadWrite: 
+    Type: "AWS::IAM::Role"
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Principal: 
+              Service: 
+                - "transfer.amazonaws.com"
+            Action: 
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies: 
+          - PolicyName: !Join ["", ["ORS-FTPSTORE-", !Ref CustomerName,"ReadWrite"] ]
+            PolicyDocument: 
+              Version: "2012-10-17"
+              Statement: 
+                - Effect: "Allow"
+                  Action:
+                  - s3:DeleteObject
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectAcl
+                  - s3:GetObjectVersion
+                  - s3:GetBucketLocation
+                  - s3:AbortMultipartUpload
+                  Resource:
+                    - !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}/${PlayoutName}/${CustomerName}*
+                - Effect: "Allow"
+                  Action:
+                  - s3:ListBuckets
+                  Resource:
+                    - "*"
+  
+  ORSFTPStoreAccessRoleRead: 
+      Type: "AWS::IAM::Role"
+      Properties: 
+        AssumeRolePolicyDocument: 
+          Version: "2012-10-17"
+          Statement: 
+            - Effect: "Allow"
+              Principal: 
+                Service: 
+                  - "transfer.amazonaws.com"
+              Action: 
+                - "sts:AssumeRole"
+        Path: "/"
+        Policies: 
+            - PolicyName: !Join ["", ["ORS-FTPSTORE-", !Ref CustomerName,"Read"] ]
+              PolicyDocument: 
+                Version: "2012-10-17"
+                Statement: 
+                  - Effect: "Allow"
+                    Action:
+                    - s3:GetObjectAcl
+                    - s3:GetObjectVersion
+                    - s3:GetObject
+                    - s3:GetBucketLocation
+                    - s3:ListBucket
+                    Resource:
+                      - !Sub arn:aws:s3:::${ORSFTPDataStoreBucketName}/${PlayoutName}/${CustomerName}*
+                  - Effect: "Allow"
+                    Action:
+                    - s3:ListBuckets
+                    Resource:
+                    - "*"
+
+Outputs:
+  FTPStoreReadRoleArn:
+    Description: Name of the Read Role for accessing the S3 FTP Store
+    Value: !GetAtt ORSFTPStoreAccessRoleRead.Arn
+
+  FTPStoreReadWriteRoleArn:
+    Description: Name of the ReadWrite Role for accessing the S3 FTP Store
+    Value: !GetAtt ORSFTPStoreAccessRoleReadWrite.Arn
